@@ -4,25 +4,35 @@ import pandas as pd
 import os
 import re
 
+# 🔹 Limpiar pantalla según el SO
+def limpiar_pantalla_consola():
+    if os.name == 'nt':
+        os.system('cls')
+    else:
+        os.system('clear')
+
+# 🔹 Enviar comando al router
 def enviar_comando_al_equipo(puerto_serial, comando_para_enviar, retraso=1):
-    puerto_serial.write((comando_para_enviar + "\r\n").encode())
+    puerto_serial.write((comando_para_enviar + "\r\n").encode())  # CRLF
     time.sleep(retraso)
     respuesta_del_equipo = puerto_serial.read(puerto_serial.in_waiting).decode(errors="ignore")
     return respuesta_del_equipo
 
+# 🔹 Obtener número de serie desde "show inventory"
 def obtener_numero_de_serie(conexion_serial):
-    enviar_comando_al_equipo(conexion_serial, "terminal length 0")
+    enviar_comando_al_equipo(conexion_serial, "terminal length 0")  # evitar paginación
     salida_inventario = enviar_comando_al_equipo(conexion_serial, "show inventory", retraso=2)
     coincidencia_serie = re.search(r"SN:\s*([A-Z0-9]+)", salida_inventario)
     if coincidencia_serie:
         return coincidencia_serie.group(1)
     return None
 
+# 🔹 Configuración de dispositivo
 def configurar_dispositivo_individual(puerto_com, nombre_host, nombre_usuario, clave_secreta, nombre_dominio):
     try:
         conexion_activa = serial.Serial(puerto_com, baudrate=9600, timeout=1)
         time.sleep(2)
-        print(f"\nIntentando conexión en {puerto_com} ({nombre_host})")
+        print(f"\n🔗 Intentando conexión en {puerto_com} ({nombre_host})")
 
         serial_obtenido = obtener_numero_de_serie(conexion_activa)
         if not serial_obtenido:
@@ -59,37 +69,31 @@ def configurar_dispositivo_individual(puerto_com, nombre_host, nombre_usuario, c
         return False
 
 def presentar_menu_principal():
+    limpiar_pantalla_consola()
     print("=== MENÚ ===")
     print("1. Comandos manuales")
-    print("2. Configuraciones automáticas")
+    print("2. Configuraciones")
     print("0. Salir")
 
 def menu_de_comandos_manuales():
-    puerto_de_conexion = input("¿En que puerto te conectarás? ")
-    while True:
-        comando_ingresado = input("Ingresa el comando (o 'exit' para salir): ")
-        if comando_ingresado.lower() == "exit":
-            break
-
-        sesion_serial = None
-        try:
-            print(f"\nAbriendo conexión en {puerto_de_conexion}...")
-            sesion_serial = serial.Serial(puerto_de_conexion, baudrate=9600, timeout=1)
-            time.sleep(2)
-            
+    puerto_de_conexion = input("¿En que puerto estas conectado? -> ")
+    try:
+        sesion_serial = serial.Serial(puerto_de_conexion, baudrate=9600, timeout=1)
+        time.sleep(2)
+        print(f"\nConectado en {puerto_de_conexion}")
+        while True:
+            comando_ingresado = input("Ingresa el comando (o 'exit' para salir): ")
+            if comando_ingresado.lower() == "exit":
+                break
             salida_del_comando = enviar_comando_al_equipo(sesion_serial, comando_ingresado, retraso=2)
             print(f"\nSalida:\n{salida_del_comando}")
-
-        except Exception as error_general:
-            print(f"\nError durante la comunicación: {error_general}")
-        finally:
-            if sesion_serial and sesion_serial.is_open:
-                sesion_serial.close()
-                print("...conexión cerrada.")
-    
+        sesion_serial.close()
+    except Exception as error_general:
+        print(f"No se pudo conectar: {error_general}")
     input("ENTER para volver...")
 
 def flujo_de_configuracion_con_csv():
+    limpiar_pantalla_consola()
     try:
         ruta_archivo = r"C:\Users\tadeo\practicas_redes_venv\Data.csv"
         dataframe_dispositivos = pd.read_csv(ruta_archivo)
@@ -115,6 +119,7 @@ def flujo_de_configuracion_con_csv():
     dispositivos_omitidos = []
 
     for indice, (puerto, host, usr, pwd, dominio_ip) in enumerate(lista_completa_dispositivos, start=1):
+        limpiar_pantalla_consola()
         print(f"\nConecte ahora el dispositivo {indice}: {host} en el puerto {puerto}")
         input("Presione ENTER cuando el dispositivo esté conectado...")
         fue_exitoso = configurar_dispositivo_individual(puerto, host, usr, pwd, dominio_ip)
@@ -124,11 +129,6 @@ def flujo_de_configuracion_con_csv():
             dispositivos_omitidos.append(host)
         print("=================================================")
         input("Presione ENTER para continuar...")
-
-    print("Resumen de la configuración:")
-    print(f"Dispositivos configurados ({len(dispositivos_configurados_ok)}): {dispositivos_configurados_ok}")
-    print(f"Dispositivos omitidos ({len(dispositivos_omitidos)}): {dispositivos_omitidos}")
-    input("Presione ENTER para volver al menú...")
 
 if __name__ == "__main__":
     while True:
@@ -144,4 +144,3 @@ if __name__ == "__main__":
         else:
             print("Opción inválida.")
             input("Presione ENTER para continuar...")
-
