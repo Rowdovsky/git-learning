@@ -97,7 +97,17 @@ def menu_de_comandos_manuales():
 # 🔹 Flujo de configuración inicial
 def flujo_de_configuracion_con_csv():
     limpiar_pantalla_consola()
-    dataframe_dispositivos = pd.read_csv("C:\\Users\\Dani\\OneDrive\\Escritorio\\Clases Unipoli\\Cuatri 4\\Programacion de Redes\\Apuntes\\VENV\\Data.csv")
+    try:
+        # Ruta del archivo CSV corregida para apuntar al usuario 'tadeo'
+        ruta_archivo = r"C:\Users\tadeo\practicas_redes_venv\Data.csv"
+        dataframe_dispositivos = pd.read_csv(ruta_archivo)
+
+    except FileNotFoundError:
+        print("\n❌ ERROR: No se encontró el archivo 'Data.csv' en la ruta especificada.")
+        print(f"Asegúrate de que el archivo exista en: {ruta_archivo}")
+        input("Presione ENTER para volver al menú...")
+        return
+        
     print("\n📂 Dispositivos encontrados en el archivo:")
     print(dataframe_dispositivos)
 
