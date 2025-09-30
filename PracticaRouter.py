@@ -4,30 +4,26 @@ import pandas as pd
 import os
 import re
 
-# 🔹 Limpiar pantalla según el SO
 def limpiar_pantalla_consola():
     if os.name == 'nt':
         os.system('cls')
     else:
         os.system('clear')
 
-# 🔹 Enviar comando al router
 def enviar_comando_al_equipo(puerto_serial, comando_para_enviar, retraso=1):
-    puerto_serial.write((comando_para_enviar + "\r\n").encode())  # CRLF
+    puerto_serial.write((comando_para_enviar + "\r\n").encode())
     time.sleep(retraso)
     respuesta_del_equipo = puerto_serial.read(puerto_serial.in_waiting).decode(errors="ignore")
     return respuesta_del_equipo
 
-# 🔹 Obtener número de serie desde "show inventory"
 def obtener_numero_de_serie(conexion_serial):
-    enviar_comando_al_equipo(conexion_serial, "terminal length 0")  # evitar paginación
+    enviar_comando_al_equipo(conexion_serial, "terminal length 0")
     salida_inventario = enviar_comando_al_equipo(conexion_serial, "show inventory", retraso=2)
     coincidencia_serie = re.search(r"SN:\s*([A-Z0-9]+)", salida_inventario)
     if coincidencia_serie:
         return coincidencia_serie.group(1)
     return None
 
-# 🔹 Configuración de dispositivo
 def configurar_dispositivo_individual(puerto_com, nombre_host, nombre_usuario, clave_secreta, nombre_dominio):
     try:
         conexion_activa = serial.Serial(puerto_com, baudrate=9600, timeout=1)
