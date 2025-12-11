@@ -1,0 +1,193 @@
+from netmiko import ConnectHandler
+
+# Ajusta esta lista con tus switches reales
+SWITCHES = [
+    {
+        "device_type": "cisco_ios",
+        "host": "192.168.1.11",
+        "username": "cisco",
+        "password": "cisco",
+        "secret": "cisco",  # enable
+        "port": 22,
+    },
+    {
+        "device_type": "cisco_ios",
+        "host": "192.168.1.12",
+        "username": "cisco",
+        "password": "cisco",
+        "secret": "cisco",
+        "port": 22,
+    },
+    # Agrega más switches si ocupas
+]
+
+# Routers o equipo core donde esté la tabla ARP para resolver IP -> MAC
+ROUTERS = [
+    {
+        "device_type": "cisco_ios",
+        "host": "192.168.1.1",
+        "username": "cisco",
+        "password": "cisco",
+        "secret": "cisco",
+        "port": 22,
+    },
+    # Agrega más si hace falta
+]
+
+
+def normalizar_mac(mac: str) -> str:
+    """
+    Convierte la MAC a formato cccc.aaaa.bbbb para comparación interna.
+    Acepta formatos con : - . o sin separadores.
+    """
+    limpia = "".join(c for c in mac.lower() if c in "0123456789abcdef")
+    if len(limpia) != 12:
+        return mac.lower()
+
+    return f"{limpia[0:4]}.{limpia[4:8]}.{limpia[8:12]}"
+
+
+def mac_coincide(linea: str, mac_normalizada: str) -> bool:
+    """
+    Revisa si en una línea de 'show mac address-table' está la MAC buscada,
+    comparando solo los hex.
+    """
+    solo_hex = "".join(c for c in linea if c.isalnum()).lower()
+    return mac_normalizada in solo_hex
+
+
+def find_by_mac(mac_address: str):
+    """
+    Busca una MAC en la tabla de MAC de cada switch.
+    Regresa lista de dicts:
+    {
+        "ip": None (si no la sabemos),
+        "mac": "xxxx.xxxx.xxxx",
+        "switch_ip": "...",
+        "vlan": "...",
+        "interface": "...",
+        "raw_line": "..."
+    }
+    """
+    mac_norm = normalizar_mac(mac_address)
+    resultados = []
+
+    for sw in SWITCHES:
+        try:
+            conn = ConnectHandler(**sw)
+            if sw.get("secret"):
+                conn.enable()
+
+            output = conn.send_command("show mac address-table")
+
+mac_norm = normalizar_mac(mac)
+
+for line in output.splitlines():
+    if mac_norm in normalizar_mac(line):
+        partes = line.split()
+        interfaz = partes[-1]
+        vlan = partes[0] if partes[0].isdigit() else "?"
+        conn.disconnect()
+        return {
+            "switch": device["host"],
+            "mac": mac_norm,
+            "vlan": vlan,
+            "interface": interfaz,
+            "raw": line
+        }
+
+            conn.disconnect()
+
+        except Exception as e:
+            resultados.append({
+                "ip": None,
+                "mac": mac_address,
+                "switch_ip": sw["host"],
+                "vlan": None,
+                "interface": None,
+                "raw_line": f"ERROR: {e}",
+                "error": str(e),
+            })
+
+    return resultados
+
+
+def resolver_ip_a_mac(ip_address: str) -> str | None:
+    """
+    Busca en las tablas ARP de ROUTERS y SWITCHES la MAC asociada a la IP dada.
+    Intenta varios comandos (show ip arp, show arp) y formatos de MAC.
+    """
+    comandos_arp = [
+        f"show ip arp {ip_address}",
+        "show ip arp",
+        f"show arp {ip_address}",
+        "show arp",
+    ]
+
+def extraer_mac_de_linea(line: str) -> str | None:
+    for token in line.split():
+        limpio = "".join(c for c in token.lower() if c in "0123456789abcdef")
+        if len(limpio) == 12:
+            return normalizar_mac(token)
+    return None
+
+
+    # Primero routers
+    for r in ROUTERS:
+        try:
+            conn = ConnectHandler(**r)
+            if r.get("secret"):
+                conn.enable()
+
+            for cmd in comandos_arp:
+                output = conn.send_command(cmd)
+                for line in output.splitlines():
+                    if ip_address in line:
+                        mac = extraer_mac_de_linea(line)
+                        if mac:
+                            conn.disconnect()
+                            return mac
+            conn.disconnect()
+        except Exception:
+            continue
+
+    # Luego switches
+    for sw in SWITCHES:
+        try:
+            conn = ConnectHandler(**sw)
+            if sw.get("secret"):
+                conn.enable()
+
+            for cmd in comandos_arp:
+                output = conn.send_command(cmd)
+                for line in output.splitlines():
+                    if ip_address in line:
+                        mac = extraer_mac_de_linea(line)
+                        if mac:
+                            conn.disconnect()
+                            return mac
+            conn.disconnect()
+        except Exception:
+            continue
+
+    return None
+
+
+def find_by_ip(ip_address: str):
+    """
+    Paso 1: Resuelve IP -> MAC usando ARP en los routers definidos.
+    Paso 2: Usa la MAC resultante para buscar en los switches.
+    El resultado incluye ip y mac.
+    """
+    mac = resolver_ip_a_mac(ip_address)
+    if not mac:
+        return [], None  # sin resultados, sin MAC
+
+    # Buscar esa MAC en los switches
+    resultados_mac = find_by_mac(mac)
+
+    # Añadir la IP conocida a los resultados
+    for r in resultados_mac:
+        r["ip"] = ip_address
+
+    return resultados_mac, mac

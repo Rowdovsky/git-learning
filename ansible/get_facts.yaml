@@ -1,0 +1,52 @@
+---
+- name: Obtener info básica de dispositivos (network_cli)
+  hosts: sw_y_routers
+  gather_facts: no
+
+  tasks:
+    - name: show version
+      cisco.ios.ios_command:
+        commands:
+          - show version
+      register: show_version
+
+    - name: show ip interface brief
+      cisco.ios.ios_command:
+        commands:
+          - show ip interface brief
+      register: show_ip_int_brief
+
+    - name: construir entrada inventario por host
+      set_fact:
+        inventario_entry:
+          hostname: "{{ inventory_hostname }}"
+          ip_principal: "{{ ansible_host }}"
+          show_version: "{{ show_version.stdout[0] }}"
+          show_ip_int_brief: "{{ show_ip_int_brief.stdout[0] }}"
+
+    - name: construir inventario_global en el controlador
+      run_once: true
+      delegate_to: localhost
+      set_fact:
+        inventario_global: >-
+          {{
+            dict(
+              ansible_play_hosts |
+              zip(ansible_play_hosts | map('extract', hostvars, 'inventario_entry'))
+            )
+          }}
+
+    - name: crear carpeta data en el controlador
+      run_once: true
+      delegate_to: localhost
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/../data"
+        state: directory
+        mode: "0755"
+
+    - name: guardar inventario en JSON (controlador)
+      run_once: true
+      delegate_to: localhost
+      copy:
+        dest: "{{ playbook_dir }}/../data/inventario_ansible.json"
+        content: "{{ inventario_global | to_nice_json }}"
